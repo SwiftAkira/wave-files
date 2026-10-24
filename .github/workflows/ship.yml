@@ -320,8 +320,14 @@ jobs:
           version=$(sed -n 's/^version: *\([^+]*\).*/\1/p' wave/pubspec.yaml)
           build=$(sed -n 's/^version: *[^+]*+\([0-9]*\).*/\1/p' wave/pubspec.yaml)
           tag="v$version-b$build-r$GITHUB_RUN_NUMBER"
+          # The version's notes as viewers read them in What's new.
+          node -e '
+            const [first] = require("./wave/assets/release_notes.json");
+            const lines = first.version === process.argv[1] ? first.notes.map((note) => `- ${note.text}`) : [];
+            require("fs").writeFileSync(process.argv[2], [...lines, "", process.argv[3]].join("\n") + "\n");
+          ' "$version" "$RUNNER_TEMP/notes.md" "Build $build, from ${SHA:0:12}."
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --latest \
-            --title "Wave $version" --notes "Wave $version (build $build), built from ${SHA:0:12}." \
+            --title "Wave $version" --notes-file "$RUNNER_TEMP/notes.md" \
             builds/Wave-Android/Wave-Android.apk builds/Wave-Windows/Wave-Windows.zip builds/Wave-Mac/Wave-Mac.zip
           {
             echo "version=$version"
