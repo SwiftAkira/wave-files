@@ -330,6 +330,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Download page and manifest
         env:
+          TOKEN: ${{ secrets.WAVE_SOURCE_TOKEN }}
           SHA: ${{ needs.check.outputs.sha }}
           VERSION: ${{ steps.release.outputs.version }}
           BUILD: ${{ steps.release.outputs.build }}
@@ -338,6 +339,14 @@ jobs:
           set -euo pipefail
           mkdir -p _site/fonts _site/files
           cp -R wave/site/. _site/
+          # The custom domain set in wave's Settings → Pages lives in the
+          # CNAME file GitHub writes to gh-pages; every build keeps it.
+          cname=$( (curl -fsS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/$SOURCE/contents/CNAME?ref=gh-pages" 2>/dev/null || true) | tr -d '[:space:]')
+          if [ -n "$cname" ]; then
+            echo "$cname" > _site/CNAME
+            echo "Custom domain: $cname"
+          fi
           cp wave/assets/wave_mark.svg _site/
           cp wave/assets/fonts/inter/Inter-Regular.ttf wave/assets/fonts/inter/Inter-SemiBold.ttf \
              wave/assets/fonts/inter/Inter-Bold.ttf wave/assets/fonts/inter/InterDisplay-Bold.ttf _site/fonts/
