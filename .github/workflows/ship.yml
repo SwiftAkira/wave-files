@@ -14,6 +14,11 @@ name: Ship Wave
 # Contents read and write on SwiftAkira/wave only) and WAVE_ANDROID_KEYSTORE
 # (the family signing key, base64).
 on:
+  # A change to this workflow runs it at once (the schedule can take a while
+  # to start, and a fix should not wait for it).
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ship.yml']
   workflow_dispatch:
     inputs:
       force:
