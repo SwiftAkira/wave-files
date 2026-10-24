@@ -2,23 +2,29 @@ name: Ship Wave
 
 # Temporary (2026-10-24). SwiftAkira/wave's own Actions are held up by
 # billing, so this public repository builds it on the free runners GitHub
-# gives public repositories. Every 15 minutes it compares wave's main with
-# what the download page was last built from (files/source.txt on wave's
-# gh-pages branch) and builds when main moved, unless only docs changed.
-# The apps go to this repository's releases. The download page and its
-# manifest point at them and go to wave's gh-pages branch, which GitHub
-# Pages serves at https://swiftakira.github.io/wave/.
+# gives public repositories. It compares wave's main with what the download
+# page was last built from (files/source.txt on wave's gh-pages branch) and
+# builds when main moved, unless only docs changed. The apps go to this
+# repository's releases. The download page and its manifest point at them
+# and go to wave's gh-pages branch, which GitHub Pages serves at
+# https://usewave.stream/.
+#
+# What starts it: a push of request.txt here (whoever ships writes the wave
+# commit to build into it), a change to this file, Run workflow, and every
+# 15 minutes. GitHub never started that schedule on this repository (not one
+# scheduled run from 01:44 to 04:30 UTC on 2026-10-24), so a release can't
+# wait for it.
 #
 # Only this file is public: the code stays in the private repository, and no
 # step prints a key. Secrets: WAVE_SOURCE_TOKEN (a fine-grained token with
 # Contents read and write on SwiftAkira/wave only) and WAVE_ANDROID_KEYSTORE
 # (the family signing key, base64).
 on:
-  # A change to this workflow runs it at once (the schedule can take a while
-  # to start, and a fix should not wait for it).
+  # A build asked for in request.txt, or a change to this workflow, runs it
+  # at once.
   push:
     branches: [main]
-    paths: ['.github/workflows/ship.yml']
+    paths: ['request.txt', '.github/workflows/ship.yml']
   workflow_dispatch:
     inputs:
       force:

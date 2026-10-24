@@ -4,16 +4,16 @@ Temporary. Wave's own build pipeline, in a private repository, is paused
 by GitHub billing. Until it runs again, this repository builds Wave on the
 free runners GitHub gives public repositories, and keeps the finished apps
 in its [releases](https://github.com/SwiftAkira/wave-files/releases). The
-download page is still https://swiftakira.github.io/wave/.
+download page is https://usewave.stream/.
 
 Only the workflow is here. The code stays private, and no step prints a
 key.
 
 ## What it does
 
-`.github/workflows/ship.yml` runs every 15 minutes. It checks whether
-Wave's `main` branch moved since the download page was built, and skips
-changes to docs alone. When it moved, it:
+`.github/workflows/ship.yml` checks whether Wave's `main` branch moved
+since the download page was built, and skips changes to docs alone. When
+it moved, it:
 
 1. builds the Android, Windows and Mac apps;
 2. puts the three files in a new release here (the five newest are kept);
@@ -21,8 +21,11 @@ changes to docs alone. When it moved, it:
    release, on the private repository's `gh-pages` branch, which GitHub
    Pages serves.
 
-Use **Actions → Ship Wave → Run workflow** to build at once. Tick
-**force** to rebuild an unchanged `main`.
+It runs when `request.txt` here changes: whoever ships writes the Wave
+commit to build into it and pushes. **Actions → Ship Wave → Run workflow**
+builds at once too; tick **force** to rebuild an unchanged `main`. It is
+also scheduled every 15 minutes, but GitHub never started that schedule on
+this repository, so don't count on it.
 
 ## Secrets
 
