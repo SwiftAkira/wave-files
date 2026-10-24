@@ -1,2 +1,1 @@
-8cb9014da0b7aa296f4575265a2339239469dfe8
-# Again: run 8 timed out in the Windows updater test, which 0.2.56 does not touch.
+f99ef4bf5d7f471a02dd01e61e42a0ef4acd7e4a
