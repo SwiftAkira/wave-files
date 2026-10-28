@@ -158,10 +158,38 @@ jobs:
           $package = Join-Path $env:RUNNER_TEMP 'Wave'
           Move-Item -LiteralPath $releaseDir -Destination $package
           Compress-Archive -Path $package -DestinationPath 'Wave-Windows.zip'
+      # Wave-Setup.exe (2026-10-28), what the download page offers Windows:
+      # it installs Wave for this Windows user with Start menu and desktop
+      # shortcuts and an uninstaller (windows/installer/wave.iss). The zip
+      # stays for the apps' own updates.
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup could not be installed.' }
+          }
+          $version = (Select-String -LiteralPath pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
+          & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$(Join-Path $env:RUNNER_TEMP 'Wave')" "/O$PWD" 'windows/installer/wave.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'The installer could not be built.' }
+          # It installs quietly where Wave can update itself, then uninstalls.
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\Wave'
+          Start-Process -Wait -FilePath (Resolve-Path 'Wave-Setup.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          foreach ($file in 'wave.exe', 'flutter_windows.dll', 'python\python.exe', 'unins000.exe') {
+            if (-not (Test-Path (Join-Path $installed $file))) { throw "The installer left out $file." }
+          }
+          if (Test-Path (Join-Path $installed 'Read me.txt')) { throw 'The installer carried the zip''s Read me.' }
+          Start-Process -Wait -FilePath (Join-Path $installed 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          # The uninstaller goes on from a copy of itself in Temp.
+          for ($i = 0; $i -lt 30 -and (Test-Path (Join-Path $installed 'wave.exe')); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path (Join-Path $installed 'wave.exe')) { throw 'The uninstaller left Wave behind.' }
       - uses: actions/upload-artifact@v4
         with:
           name: Wave-Windows
-          path: Wave-Windows.zip
+          path: |
+            Wave-Windows.zip
+            Wave-Setup.exe
           retention-days: 3
           if-no-files-found: error
 
@@ -334,7 +362,7 @@ jobs:
           ' "$version" "$RUNNER_TEMP/notes.md" "Build $build, from ${SHA:0:12}."
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --latest \
             --title "Wave $version" --notes-file "$RUNNER_TEMP/notes.md" \
-            builds/Wave-Android/Wave-Android.apk builds/Wave-Windows/Wave-Windows.zip builds/Wave-Mac/Wave-Mac.zip
+            builds/Wave-Android/Wave-Android.apk builds/Wave-Windows/Wave-Windows.zip builds/Wave-Windows/Wave-Setup.exe builds/Wave-Mac/Wave-Mac.zip
           {
             echo "version=$version"
             echo "build=$build"
@@ -368,6 +396,8 @@ jobs:
           const files = [
             ['mac', 'builds/Wave-Mac/Wave-Mac.zip'],
             ['windows', 'builds/Wave-Windows/Wave-Windows.zip'],
+            // The download page's file for Windows; the apps update from the zip.
+            ['setup', 'builds/Wave-Windows/Wave-Setup.exe'],
             ['android', 'builds/Wave-Android/Wave-Android.apk'],
           ].map(([id, path]) => {
             const name = path.split('/').pop();
