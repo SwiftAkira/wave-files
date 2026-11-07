@@ -15,8 +15,12 @@ key.
 since the download page was built, and skips changes to docs alone. When
 it moved, it:
 
-1. builds the Android, Windows and Mac apps;
-2. puts the three files in a new release here (the five newest are kept);
+1. builds the Android, Windows and Mac apps, with the installers the
+   download page offers (`Wave-Setup.exe`, and `Wave-Mac.dmg` from Wave
+   commits that have `macos/installer`) beside the zips the apps update
+   from; the run's `Wave-Mac-installer-preview` artifact, when the runner
+   lets it take one, is a screenshot of the Mac installer's window;
+2. puts the files in a new release here (the five newest are kept);
 3. publishes the download page and its manifest, which point at that
    release, on the private repository's `gh-pages` branch, which GitHub
    Pages serves.
