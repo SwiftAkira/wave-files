@@ -18,8 +18,11 @@ it moved, it:
 1. builds the Android, Windows and Mac apps, with the installers the
    download page offers (`Wave-Setup.exe`, and `Wave-Mac.dmg` from Wave
    commits that have `macos/installer`) beside the zips the apps update
-   from; the run's `Wave-Mac-installer-preview` artifact, when the runner
-   lets it take one, is a screenshot of the Mac installer's window;
+   from, and from Wave commits that have `linux/` the Linux app,
+   `Wave-Linux.tar.gz` (a Linux build that fails leaves Linux out of that
+   release and holds up nothing else); the run's
+   `Wave-Mac-installer-preview` artifact, when the runner lets it take one,
+   is a screenshot of the Mac installer's window;
 2. puts the files in a new release here (the five newest are kept);
 3. publishes the download page and its manifest, which point at that
    release, on the private repository's `gh-pages` branch, which GitHub

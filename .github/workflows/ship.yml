@@ -52,6 +52,12 @@ env:
   # Standalone CPython for Apple Silicon (astral-sh/python-build-standalone).
   MAC_PYTHON_URL: https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.11.16%2B20260924-aarch64-apple-darwin-install_only.tar.gz
   MAC_PYTHON_SHA256: d718e3c5c6f4b225ed25f88bf65e4c5d314e0dea0d716ea50bc9d038630c502b
+  # The same CPython for Linux (x86_64, glibc 2.17 and newer).
+  LINUX_PYTHON_URL: https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.11.16%2B20260924-x86_64-unknown-linux-gnu-install_only.tar.gz
+  LINUX_PYTHON_SHA256: 49a52eb189878431a36efd137e7cd08f6429e59dc049b9cfb030bf706eb33fd4
+  # What a Linux Wave builds against; the apps use the computer's own (mpv
+  # brings libmpv.so.2), which wave's linux/packaging/package.sh checks.
+  LINUX_BUILD_PACKAGES: ninja-build libgtk-3-dev libmpv-dev libsecret-1-dev libasound2-dev libepoxy-dev liblzma-dev
 
 jobs:
   check:
@@ -321,6 +327,75 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+  # Wave for Linux (2026-11-09): Wave-Linux.tar.gz, from Wave commits that
+  # have linux/. A Linux build that fails doesn't hold up the other apps:
+  # they go out without it, and this job shows the failure.
+  linux:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE }}
+          ref: ${{ needs.check.outputs.sha }}
+          token: ${{ secrets.WAVE_SOURCE_TOKEN }}
+          persist-credentials: false
+      - id: has
+        run: |
+          if [ -f linux/packaging/package.sh ]; then
+            echo "linux=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::This Wave commit has no Linux version (linux/)."
+            echo "linux=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.has.outputs.linux == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Libraries Wave builds against
+        if: steps.has.outputs.linux == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq $LINUX_BUILD_PACKAGES
+      - if: steps.has.outputs.linux == 'true'
+        run: flutter pub get
+      # The updater's real swap (a tar.gz into Wave's folder).
+      - if: steps.has.outputs.linux == 'true'
+        run: flutter test test/updates/linux_update_test.dart
+      - if: steps.has.outputs.linux == 'true'
+        run: flutter build linux --release --dart-define-from-file=artifacts/private/build-config.json
+      - name: Package with the Python source search
+        if: steps.has.outputs.linux == 'true'
+        run: linux/packaging/package.sh build/linux/x64/release/bundle "$LINUX_PYTHON_URL" "$LINUX_PYTHON_SHA256" Wave-Linux.tar.gz
+      # The install command on what the package holds (a fresh home, not
+      # root: it refuses root).
+      - name: Install command works
+        if: steps.has.outputs.linux == 'true'
+        run: |
+          set -euo pipefail
+          sudo useradd -m wavecheck
+          sudo cp Wave-Linux.tar.gz site/files/install-linux.sh /home/wavecheck/
+          sudo chown wavecheck: /home/wavecheck/Wave-Linux.tar.gz /home/wavecheck/install-linux.sh
+          sudo -u wavecheck -H env -u DISPLAY -u WAYLAND_DISPLAY WAVE_NO_PACKAGES=1 bash -c 'cd ~ && bash install-linux.sh Wave-Linux.tar.gz'
+          sudo -u wavecheck test -x /home/wavecheck/.local/opt/wave/wave
+          sudo -u wavecheck test -x /home/wavecheck/.local/opt/wave/python/bin/python3
+          sudo -u wavecheck grep -q 'MimeType=x-scheme-handler/wave;' /home/wavecheck/.local/share/applications/app.wave.wave.desktop
+          if ldd build/linux/x64/release/bundle/wave | grep 'not found'; then
+            echo "::error::Wave needs a library the runner doesn't have."
+            exit 1
+          fi
+      - if: steps.has.outputs.linux == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wave-Linux
+          path: Wave-Linux.tar.gz
+          retention-days: 3
+          if-no-files-found: error
+
   android:
     needs: check
     if: needs.check.outputs.build == 'true'
@@ -386,7 +461,12 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [check, windows, macos, android]
+    needs: [check, windows, macos, android, linux]
+    # Linux may have failed or been skipped; the others must have built.
+    if: >-
+      !cancelled() && needs.check.outputs.build == 'true' &&
+      needs.windows.result == 'success' && needs.macos.result == 'success' &&
+      needs.android.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -424,6 +504,8 @@ jobs:
                  builds/Wave-Windows/Wave-Setup.exe builds/Wave-Mac/Wave-Mac.zip)
           # The Mac installer, from Wave commits that have one.
           if [ -f builds/Wave-Mac/Wave-Mac.dmg ]; then files+=(builds/Wave-Mac/Wave-Mac.dmg); fi
+          # Linux, from Wave commits that have it and when it built.
+          if [ -f builds/Wave-Linux/Wave-Linux.tar.gz ]; then files+=(builds/Wave-Linux/Wave-Linux.tar.gz); fi
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --latest \
             --title "Wave $version" --notes-file "$RUNNER_TEMP/notes.md" "${files[@]}"
           {
@@ -464,8 +546,10 @@ jobs:
             // The download page's file for Windows; the apps update from the zip.
             ['setup', 'builds/Wave-Windows/Wave-Setup.exe'],
             ['android', 'builds/Wave-Android/Wave-Android.apk'],
-            // The installer comes from Wave commits that have one.
-          ].filter(([id, path]) => id !== 'dmg' || existsSync(path)).map(([id, path]) => {
+            // Linux's tar.gz, what both its install command and its apps take.
+            ['linux', 'builds/Wave-Linux/Wave-Linux.tar.gz'],
+            // The installer and Linux come from Wave commits that have them.
+          ].filter(([id, path]) => (id !== 'dmg' && id !== 'linux') || existsSync(path)).map(([id, path]) => {
             const name = path.split('/').pop();
             return {
               id,
